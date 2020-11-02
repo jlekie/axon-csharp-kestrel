@@ -47,6 +47,33 @@ namespace Axon.Kestrel.Transport
 
             app.Map(options.Route, axonApp =>
             {
+                axonApp.MapWhen(context => context.Request.Path.StartsWithSegments("/req") && context.Request.Method == "POST", requestApp =>
+                {
+                    requestApp.Run(async context =>
+                    {
+                        if (!context.Request.Query.TryGetValue("tag", out var tag))
+                            throw new Exception("Tag required");
+
+                        var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
+
+                        TransportMessage message;
+                        using (var stream = new MemoryStream())
+                        {
+                            await context.Request.Body.CopyToAsync(stream);
+                            stream.Position = 0;
+
+                            using (var reader = new BinaryReader(stream))
+                                message = reader.ReadTransportMessage();
+                        }
+
+                        await client.Send(tag, message, cancellationSource.Token);
+
+                        var responseMessage = await client.Receive(tag, cancellationSource.Token);
+                        using (var writer = new BinaryWriter(context.Response.Body))
+                            writer.WriteTransportMessage(responseMessage);
+                    });
+                });
+
                 axonApp.MapWhen(context => context.Request.Path.StartsWithSegments("/send") && context.Request.Method == "POST", requestApp =>
                 {
                     requestApp.Run(async context =>
@@ -140,10 +167,17 @@ namespace Axon.Kestrel.Transport
         }
         private async void BackendMessageReceived(object sender, MessagingEventArgs e)
         {
-            if (string.IsNullOrEmpty(e.Tag))
-                await this.Transport.Send(e.Message);
-            else
-                await this.Transport.Send(e.Tag, e.Message);
+            try
+            {
+                if (string.IsNullOrEmpty(e.Tag))
+                    await this.Transport.Send(e.Message);
+                else
+                    await this.Transport.Send(e.Tag, e.Message);
+            }
+            catch (Exception ex)
+            {
+                this.OnDiagnosticMessage($"Transport forwarder messaging error: " + ex.Message);
+            }
         }
 
         private IClientTransport ResolveBackend(string identifier, CancellationToken cancellationToken)
@@ -174,6 +208,8 @@ namespace Axon.Kestrel.Transport
 
         public HttpClient HttpClient { get; }
 
+        private ConcurrentDictionary<string, BlockingCollection<Task<TransportMessage>>> PendingRequests { get; } = new ConcurrentDictionary<string, BlockingCollection<Task<TransportMessage>>>();
+
         public HttpClientClientTransport(HttpClient httpClient)
         {
             this.HttpClient = httpClient;
@@ -203,7 +239,7 @@ namespace Axon.Kestrel.Transport
         }
         public override async Task<TransportMessage> Receive(CancellationToken cancellationToken)
         {
-            var reqMessage = new HttpRequestMessage(HttpMethod.Get, "/axon/receive")
+            var reqMessage = new HttpRequestMessage(HttpMethod.Get, "axon/receive")
             {
                 Version = new Version(2, 0)
             };
@@ -217,17 +253,19 @@ namespace Axon.Kestrel.Transport
         {
             return this.Receive(messageId, CancellationToken.None);
         }
-        public override async Task<TransportMessage> Receive(string messageId, CancellationToken cancellationToken)
+        public override Task<TransportMessage> Receive(string messageId, CancellationToken cancellationToken)
         {
-            var reqMessage = new HttpRequestMessage(HttpMethod.Get, $"/axon/receive?tag={messageId}")
-            {
-                Version = new Version(2, 0)
-            };
-            var response = await this.HttpClient.SendAsync(reqMessage);
+            //var reqMessage = new HttpRequestMessage(HttpMethod.Get, $"axon/receive?tag={messageId}")
+            //{
+            //    Version = new Version(2, 0)
+            //};
+            //var response = await this.HttpClient.SendAsync(reqMessage);
 
-            using (var stream = await response.Content.ReadAsStreamAsync())
-            using (var reader = new BinaryReader(stream))
-                return reader.ReadTransportMessage();
+            //using (var stream = await response.Content.ReadAsStreamAsync())
+            //using (var reader = new BinaryReader(stream))
+            //    return reader.ReadTransportMessage();
+
+            return this.PendingRequests.GetOrAdd(messageId, (_) => new BlockingCollection<Task<TransportMessage>>()).Take(cancellationToken);
         }
 
         public override Task<TaggedTransportMessage> ReceiveTagged()
@@ -251,8 +289,8 @@ namespace Axon.Kestrel.Transport
             using (var writer = new BinaryWriter(stream))
             {
                 writer.WriteTransportMessage(message);
-
-                var reqMessage = new HttpRequestMessage(HttpMethod.Post, "/axon/send")
+                
+                var reqMessage = new HttpRequestMessage(HttpMethod.Post, "axon/send")
                 {
                     Content = content,
                     Version = new Version(2, 0)
@@ -277,13 +315,19 @@ namespace Axon.Kestrel.Transport
                 data = stream.ToArray();
             }
 
-            var reqMessage = new HttpRequestMessage(HttpMethod.Post, $"/axon/send?tag={messageId}")
+            var reqMessage = new HttpRequestMessage(HttpMethod.Post, $"axon/req?tag={messageId}")
             {
                 Content = new ByteArrayContent(data),
                 Version = new Version(2, 0)
             };
 
-            await this.HttpClient.SendAsync(reqMessage, cancellationToken);
+            //await this.HttpClient.SendAsync(reqMessage, cancellationToken);
+            this.PendingRequests.GetOrAdd(messageId, (_) => new BlockingCollection<Task<TransportMessage>>()).Add(this.HttpClient.SendAsync(reqMessage, cancellationToken).ContinueWith(async sendTask =>
+            {
+                using (var stream = await sendTask.Result.Content.ReadAsStreamAsync())
+                using (var reader = new BinaryReader(stream))
+                    return reader.ReadTransportMessage();
+            }).Unwrap());
         }
 
         public override Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message)

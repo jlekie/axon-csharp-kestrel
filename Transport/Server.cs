@@ -83,6 +83,9 @@ namespace Axon.Kestrel.Transport
                             writer.WriteTransportMessage(responseMessage);
 
                             var responsePayload = Encoding.UTF8.GetBytes(Convert.ToBase64String(stream.ToArray()));
+
+                            context.Response.ContentType = "text/plain";
+                            context.Response.ContentLength = responsePayload.Length;
                             context.Response.Body.Write(responsePayload, 0, responsePayload.Length);
                         }
                         //using (var writer = new BinaryWriter(context.Response.Body))

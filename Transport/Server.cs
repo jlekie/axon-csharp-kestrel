@@ -240,12 +240,14 @@ namespace Axon.Kestrel.Transport
         public override bool IsConnected => true;
 
         public HttpClient HttpClient { get; }
+        private EntanglementProtocol Protocol { get; }
 
         private ConcurrentDictionary<string, BlockingCollection<Task<TransportMessage>>> PendingRequests { get; } = new ConcurrentDictionary<string, BlockingCollection<Task<TransportMessage>>>();
 
         public HttpClientClientTransport(HttpClient httpClient)
         {
             this.HttpClient = httpClient;
+            this.Protocol = new EntanglementProtocol();
         }
 
         public override Task Connect()
@@ -278,10 +280,17 @@ namespace Axon.Kestrel.Transport
             };
             var response = await this.HttpClient.SendAsync(reqMessage);
 
-            var rawResponse = await response.Content.ReadAsByteArrayAsync();
-            using (var stream = new MemoryStream(rawResponse))
-            using (var reader = new BinaryReader(stream))
-                return reader.ReadTransportMessage();
+            var rawResponse = await response.Content.ReadAsStringAsync();
+            var encodedResponse = Convert.FromBase64String(rawResponse);
+
+            var message = this.Protocol.Read(encodedResponse, reader => reader.ReadTransportMessage());
+
+            return message;
+
+            //var rawResponse = await sendTask.Result.Content.ReadAsByteArrayAsync();
+            //using (var stream = new MemoryStream(rawResponse))
+            //using (var reader = new BinaryReader(stream))
+            //    return reader.ReadTransportMessage();
 
             //using (var stream = await response.Content.ReadAsStreamAsync())
             //using (var reader = new BinaryReader(stream))
@@ -322,18 +331,11 @@ namespace Axon.Kestrel.Transport
         }
         public override async Task Send(TransportMessage message, CancellationToken cancellationToken)
         {
-            byte[] data;
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream))
-            {
-                writer.WriteTransportMessage(message);
-
-                data = stream.ToArray();
-            }
+            var data = this.Protocol.Write(writer => writer.WriteTransportMessage(message));
 
             var reqMessage = new HttpRequestMessage(HttpMethod.Post, "axon/send")
             {
-                Content = new ByteArrayContent(data),
+                Content = new StringContent(Convert.ToBase64String(data.ToArray()), Encoding.UTF8, "text/plain"),
                 Version = new Version(2, 0)
             };
 
@@ -346,28 +348,28 @@ namespace Axon.Kestrel.Transport
         }
         public override async Task Send(string messageId, TransportMessage message, CancellationToken cancellationToken)
         {
-            byte[] data;
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream))
-            {
-                writer.WriteTransportMessage(message);
-
-                data = stream.ToArray();
-            }
+            var data = this.Protocol.Write(writer => writer.WriteTransportMessage(message));
 
             var reqMessage = new HttpRequestMessage(HttpMethod.Post, $"axon/req?tag={messageId}")
             {
-                Content = new ByteArrayContent(data),
+                Content = new StringContent(Convert.ToBase64String(data.ToArray()), Encoding.UTF8, "text/plain"),
                 Version = new Version(2, 0)
             };
 
             //await this.HttpClient.SendAsync(reqMessage, cancellationToken);
             this.PendingRequests.GetOrAdd(messageId, (_) => new BlockingCollection<Task<TransportMessage>>()).Add(this.HttpClient.SendAsync(reqMessage, cancellationToken).ContinueWith(async sendTask =>
             {
-                var rawResponse = await sendTask.Result.Content.ReadAsByteArrayAsync();
-                using (var stream = new MemoryStream(rawResponse))
-                using (var reader = new BinaryReader(stream))
-                    return reader.ReadTransportMessage();
+                var rawResponse = await sendTask.Result.Content.ReadAsStringAsync();
+                var encodedResponse = Convert.FromBase64String(rawResponse);
+
+                var message = this.Protocol.Read(encodedResponse, reader => reader.ReadTransportMessage());
+
+                return message;
+
+                //var rawResponse = await sendTask.Result.Content.ReadAsByteArrayAsync();
+                //using (var stream = new MemoryStream(rawResponse))
+                //using (var reader = new BinaryReader(stream))
+                //    return reader.ReadTransportMessage();
 
                 //using (var stream = await sendTask.Result.Content.ReadAsStreamAsync())
                 //using (var reader = new BinaryReader(stream))
@@ -406,6 +408,41 @@ namespace Axon.Kestrel.Transport
             return new StringContent(contentBuilder.ToString(), Encoding.UTF8, "application/json");
         }
 
+        public static void WriteTransportMessage(this IProtocolWriter writer, TransportMessage message)
+        {
+            writer.WriteIntegerValue(0);
+            writer.WriteIntegerValue(message.Metadata.Frames.Count);
+
+            foreach (var frame in message.Metadata.Frames)
+            {
+                writer.WriteStringValue(frame.Id);
+                writer.WriteData(frame.Data);
+            }
+
+            writer.WriteData(message.Payload);
+        }
+        public static TransportMessage ReadTransportMessage(this IProtocolReader reader)
+        {
+            var metadata = new VolatileTransportMetadata();
+
+            var signal = reader.ReadIntegerValue();
+            if (signal != 0)
+                throw new Exception("Message received with signal code " + signal.ToString());
+
+            var frameCount = reader.ReadIntegerValue();
+            for (var a = 0; a < frameCount; a++)
+            {
+                var id = reader.ReadStringValue();
+                var data = reader.ReadData().ToArray();
+
+                metadata.Add(id, data);
+            }
+
+            var payloadData = reader.ReadData().ToArray();
+
+            return new TransportMessage(payloadData, metadata);
+        }
+
         public static void WriteTransportMessage(this BinaryWriter writer, TransportMessage message)
         {
             writer.Write(BitConverter.GetBytes(0));
@@ -425,7 +462,6 @@ namespace Axon.Kestrel.Transport
             writer.Write(BitConverter.GetBytes(message.Payload.Length));
             writer.Write(message.Payload);
         }
-
         public static TransportMessage ReadTransportMessage(this BinaryReader reader)
         {
             var metadata = new VolatileTransportMetadata();

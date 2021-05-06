@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Internal;
 using Microsoft.AspNetCore.Server.Kestrel.Core.Adapter.Internal;
+using Microsoft.AspNetCore.Authentication;
 
 namespace Axon.Kestrel.Transport
 {
@@ -53,6 +54,12 @@ namespace Axon.Kestrel.Transport
                 {
                     requestApp.Run(async context =>
                     {
+                        if (!context.User.Identity.IsAuthenticated)
+                        {
+                            context.Response.StatusCode = 401;
+                            return;
+                        }
+
                         if (!context.Request.Query.TryGetValue("tag", out var tag))
                             throw new Exception("Tag required");
 
@@ -97,6 +104,12 @@ namespace Axon.Kestrel.Transport
                 {
                     requestApp.Run(async context =>
                     {
+                        if (!context.User.Identity.IsAuthenticated)
+                        {
+                            context.Response.StatusCode = 401;
+                            return;
+                        }
+
                         var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
 
                         byte[] requestData;
@@ -126,6 +139,12 @@ namespace Axon.Kestrel.Transport
                 {
                     requestApp.Run(async context =>
                     {
+                        if (!context.User.Identity.IsAuthenticated)
+                        {
+                            context.Response.StatusCode = 401;
+                            return;
+                        }
+
                         var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
 
                         TransportMessage message;

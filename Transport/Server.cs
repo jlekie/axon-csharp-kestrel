@@ -61,7 +61,7 @@ namespace Axon.Kestrel.Transport
                         }
 
                         if (!context.Request.Query.TryGetValue("tag", out var tag))
-                            throw new Exception("Tag required");
+                            tag = Guid.NewGuid().ToString("N").ToLower();
 
                         var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
 

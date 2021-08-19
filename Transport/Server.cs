@@ -82,7 +82,8 @@ namespace Axon.Kestrel.Transport
                         }
 
                         await client.Send(tag, message, cancellationSource.Token);
-                        var responseMessage = await client.Receive(tag, cancellationSource.Token);
+                        //var responseMessage = await client.Receive(tag, cancellationSource.Token);
+                        var responseMessage = await Task.Factory.StartNew(() => client.Receive(tag, cancellationSource.Token), TaskCreationOptions.LongRunning).Unwrap();
 
                         using (var stream = new MemoryStream())
                         using (var writer = new BinaryWriter(stream))

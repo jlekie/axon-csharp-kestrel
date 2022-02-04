@@ -81,6 +81,9 @@ namespace Axon.Kestrel.Transport
                             message = reader.ReadTransportMessage();
                         }
 
+                        if (!message.Metadata.Has("aid") && System.Diagnostics.Activity.Current != null)
+                            message.Metadata.AddOrSet("aid", System.Text.Encoding.UTF8.GetBytes($"|{System.Diagnostics.Activity.Current.RootId}.{System.Diagnostics.Activity.Current.SpanId}"));
+
                         await client.Send(tag, message, cancellationSource.Token);
                         //var responseMessage = await client.Receive(tag, cancellationSource.Token);
                         var responseMessage = await Task.Factory.StartNew(() => client.Receive(tag, cancellationSource.Token), TaskCreationOptions.LongRunning).Unwrap();

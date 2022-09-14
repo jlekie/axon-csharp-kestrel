@@ -1,0 +1,8 @@
+labels:
+  app.cohesion.io/platform: dotnet
+  app.cohesion.io/platform/language: csharp
+tasks:
+  - name: build
+    actions:
+      - type: exec
+        cmd: dotnet build

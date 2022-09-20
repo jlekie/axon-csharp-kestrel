@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Internal;
 using Microsoft.AspNetCore.Server.Kestrel.Core.Adapter.Internal;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Axon.Kestrel.Transport
 {
@@ -43,6 +44,8 @@ namespace Axon.Kestrel.Transport
     {
         public static IApplicationBuilder UseAxon(this IApplicationBuilder app, InprocClientTransport client, Action<AxonKestrelHostingOptions> configure)
         {
+            var memoryStreamManager = app.ApplicationServices.GetRequiredService<Microsoft.IO.RecyclableMemoryStreamManager>();
+
             var options = new AxonKestrelHostingOptions();
             configure(options);
 
@@ -66,16 +69,17 @@ namespace Axon.Kestrel.Transport
                         var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
 
                         byte[] requestData;
-                        using (var stream = new MemoryStream())
+                        using (var stream = memoryStreamManager.GetStream())
                         {
                             await context.Request.Body.CopyToAsync(stream);
                             stream.Position = 0;
 
-                            requestData = Convert.FromBase64String(Encoding.UTF8.GetString(stream.ToArray()));
+                            var buffer = stream.GetBuffer();
+                            requestData = Convert.FromBase64String(Encoding.UTF8.GetString(buffer[0..(int)stream.Length]));
                         }
 
                         TransportMessage message;
-                        using (var stream = new MemoryStream(requestData))
+                        using (var stream = memoryStreamManager.GetStream(requestData))
                         using (var reader = new BinaryReader(stream))
                         {
                             message = reader.ReadTransportMessage();
@@ -88,12 +92,13 @@ namespace Axon.Kestrel.Transport
                         //var responseMessage = await client.Receive(tag, cancellationSource.Token);
                         var responseMessage = await Task.Factory.StartNew(() => client.Receive(tag, cancellationSource.Token), TaskCreationOptions.LongRunning).Unwrap();
 
-                        using (var stream = new MemoryStream())
+                        using (var stream = memoryStreamManager.GetStream())
                         using (var writer = new BinaryWriter(stream))
                         {
                             writer.WriteTransportMessage(responseMessage);
 
-                            var responsePayload = Encoding.UTF8.GetBytes(Convert.ToBase64String(stream.ToArray()));
+                            var buffer = stream.GetBuffer();
+                            var responsePayload = Encoding.UTF8.GetBytes(Convert.ToBase64String(buffer[0..(int)stream.Length]));
 
                             context.Response.ContentType = "text/plain";
                             context.Response.ContentLength = responsePayload.Length;
@@ -117,16 +122,17 @@ namespace Axon.Kestrel.Transport
                         var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
 
                         byte[] requestData;
-                        using (var stream = new MemoryStream())
+                        using (var stream = memoryStreamManager.GetStream())
                         {
                             await context.Request.Body.CopyToAsync(stream);
                             stream.Position = 0;
 
-                            requestData = Convert.FromBase64String(Encoding.UTF8.GetString(stream.ToArray()));
+                            var buffer = stream.GetBuffer();
+                            requestData = Convert.FromBase64String(Encoding.UTF8.GetString(buffer[0..(int)stream.Length]));
                         }
 
                         TransportMessage message;
-                        using (var stream = new MemoryStream(requestData))
+                        using (var stream = memoryStreamManager.GetStream(requestData))
                         using (var reader = new BinaryReader(stream))
                         {
                             message = reader.ReadTransportMessage();
@@ -157,12 +163,13 @@ namespace Axon.Kestrel.Transport
                         else
                             message = await client.Receive(cancellationSource.Token);
 
-                        using (var stream = new MemoryStream())
+                        using (var stream = memoryStreamManager.GetStream())
                         using (var writer = new BinaryWriter(stream))
                         {
                             writer.WriteTransportMessage(message);
 
-                            var responsePayload = Convert.FromBase64String(Convert.ToBase64String(stream.ToArray()));
+                            var buffer = stream.GetBuffer();
+                            var responsePayload = Convert.FromBase64String(Convert.ToBase64String(buffer[0..(int)stream.Length]));
                             context.Response.Body.Write(responsePayload, 0, responsePayload.Length);
                         }
                         //using (var writer = new BinaryWriter(context.Response.Body))

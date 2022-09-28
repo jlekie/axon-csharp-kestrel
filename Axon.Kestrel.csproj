@@ -4,7 +4,7 @@
     <Company>Axon</Company>
     <PackageId>JLekie.Axon.Kestrel</PackageId>
     <Authors>Joe Lekie</Authors>
-    <Version>1.0.0-alpha.1</Version>
+    <Version>1.0.0-alpha.2</Version>
     <Description>Axon - Kestrel Runtime</Description>
     <PackageTags>Axon RPC Kestrel</PackageTags>
     <RepositoryUrl>https://github.com/jlekie/axon-csharp-kestrel</RepositoryUrl>
@@ -22,7 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Condition="!('$(ForcePackageReferences)' != '' And $(ForcePackageReferences)) And Exists('$(AxonCommonSourcePath)\Axon.Common.csproj')" Include="$(AxonCommonSourcePath)\Axon.Common.csproj" />
-    <PackageReference Condition="('$(ForcePackageReferences)' != '' And $(ForcePackageReferences)) Or !Exists('$(AxonCommonSourcePath)\Axon.Common.csproj')" Include="JLekie.Axon.Common" Version="1.0.0-alpha.1" />
+    <PackageReference Condition="('$(ForcePackageReferences)' != '' And $(ForcePackageReferences)) Or !Exists('$(AxonCommonSourcePath)\Axon.Common.csproj')" Include="JLekie.Axon.Common" Version="1.0.0-alpha.2" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageReference Include="Microsoft.Extensions.Logging">

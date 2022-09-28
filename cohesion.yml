@@ -1,8 +1,20 @@
 labels:
   app.cohesion.io/platform: dotnet
   app.cohesion.io/platform/language: csharp
+  app.cohesion.io/name: axon
+variables:
+  CONFIGURATION: Debug
+  PUBLISH_SOURCE: nuget.org
 tasks:
   - name: build
     actions:
       - type: exec
-        cmd: dotnet build
+        cmd: dotnet build -c ${CONFIGURATION}
+  - name: package
+    actions:
+      - type: exec
+        cmd: dotnet pack -c ${CONFIGURATION}
+  - name: publish
+    actions:
+      - type: exec
+        cmd: cd ./bin/${CONFIGURATION} && dotnet nuget push *.nupkg --api-key=${PUBLISH_API_KEY} --source=${PUBLISH_SOURCE} --skip-duplicate

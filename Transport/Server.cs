@@ -396,20 +396,26 @@ namespace Axon.Kestrel.Transport
         public override async Task Send(string messageId, TransportMessage message, CancellationToken cancellationToken)
         {
             var data = this.Protocol.Write(writer => writer.WriteTransportMessage(message));
+            
+            var binaryContent = new System.Net.Http.ByteArrayContent(data.ToArray());
+            binaryContent.Headers.Remove("Content-Type");
+            binaryContent.Headers.Add("Content-Type", "application/axon");
 
             var reqMessage = new HttpRequestMessage(HttpMethod.Post, $"axon/req?tag={messageId}")
             {
-                Content = new StringContent(Convert.ToBase64String(data.ToArray()), Encoding.UTF8, "text/plain"),
+                //Content = new StringContent(Convert.ToBase64String(data.ToArray()), Encoding.UTF8, "application/axon"),
+                Content = binaryContent,
                 Version = new Version(2, 0)
             };
 
             //await this.HttpClient.SendAsync(reqMessage, cancellationToken);
             this.PendingRequests.GetOrAdd(messageId, (_) => new BlockingCollection<Task<TransportMessage>>()).Add(this.HttpClient.SendAsync(reqMessage, cancellationToken).ContinueWith(async sendTask =>
             {
-                var rawResponse = await sendTask.Result.Content.ReadAsStringAsync();
-                var encodedResponse = Convert.FromBase64String(rawResponse);
+                sendTask.Result.EnsureSuccessStatusCode();
 
-                var message = this.Protocol.Read(encodedResponse, reader => reader.ReadTransportMessage());
+                var rawResponse = await sendTask.Result.Content.ReadAsByteArrayAsync();
+                Console.WriteLine("Server Response: " + rawResponse.Length);
+                var message = this.Protocol.Read(rawResponse, reader => reader.ReadTransportMessage());
 
                 return message;
 

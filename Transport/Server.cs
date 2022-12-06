@@ -75,15 +75,19 @@ namespace Axon.Kestrel.Transport
                             stream.Position = 0;
 
                             var buffer = stream.GetBuffer();
-                            requestData = Convert.FromBase64String(Encoding.UTF8.GetString(buffer[0..(int)stream.Length]));
+                            //requestData = Convert.FromBase64String(Encoding.UTF8.GetString(buffer[0..(int)stream.Length]));
+                            requestData = buffer[0..(int)stream.Length];
                         }
 
-                        TransportMessage message;
-                        using (var stream = memoryStreamManager.GetStream(requestData))
-                        using (var reader = new BinaryReader(stream))
-                        {
-                            message = reader.ReadTransportMessage();
-                        }
+                        var protocol = new EntanglementProtocol(new EntanglementProtocolOptions(false));
+                        var message = protocol.Read(requestData, reader => reader.ReadTransportMessage());
+
+                        //TransportMessage message;
+                        //using (var stream = memoryStreamManager.GetStream(requestData))
+                        //using (var reader = new BinaryReader(stream))
+                        //{
+                        //    message = reader.ReadTransportMessage();
+                        //}
 
                         if (!message.Metadata.Has("aid") && System.Diagnostics.Activity.Current != null)
                             message.Metadata.AddOrSet("aid", System.Text.Encoding.UTF8.GetBytes($"|{System.Diagnostics.Activity.Current.RootId}.{System.Diagnostics.Activity.Current.SpanId}"));
@@ -92,90 +96,103 @@ namespace Axon.Kestrel.Transport
                         //var responseMessage = await client.Receive(tag, cancellationSource.Token);
                         var responseMessage = await Task.Factory.StartNew(() => client.Receive(tag, cancellationSource.Token), TaskCreationOptions.LongRunning).Unwrap();
 
-                        using (var stream = memoryStreamManager.GetStream())
-                        using (var writer = new BinaryWriter(stream))
-                        {
-                            writer.WriteTransportMessage(responseMessage);
+                        var responseData = protocol.Write(writer => writer.WriteTransportMessage(responseMessage));
+                        context.Response.ContentType = "application/axon";
+                        context.Response.ContentLength = responseData.Length;
+                        context.Response.Body.Write(responseData.ToArray(), 0, responseData.Length);
 
-                            var buffer = stream.GetBuffer();
-                            var responsePayload = Encoding.UTF8.GetBytes(Convert.ToBase64String(buffer[0..(int)stream.Length]));
 
-                            context.Response.ContentType = "text/plain";
-                            context.Response.ContentLength = responsePayload.Length;
-                            context.Response.Body.Write(responsePayload, 0, responsePayload.Length);
-                        }
+
+
+                        //using (var stream = memoryStreamManager.GetStream())
+                        //using (var writer = new BinaryWriter(stream))
+                        //{
+                        //    writer.WriteTransportMessage(responseMessage);
+
+                        //    var buffer = stream.GetBuffer();
+                        //    //var responsePayload = Encoding.UTF8.GetBytes(Convert.ToBase64String(buffer[0..(int)stream.Length]));
+                        //    var responsePayload = buffer[0..(int)stream.Length];
+
+                        //    context.Response.ContentType = "text/plain";
+                        //    context.Response.ContentLength = responsePayload.Length;
+                        //    context.Response.Body.Write(responsePayload, 0, responsePayload.Length);
+                        //}
+
+
+
+
                         //using (var writer = new BinaryWriter(context.Response.Body))
                         //    writer.WriteTransportMessage(responseMessage);
                     });
                 });
 
-                axonApp.MapWhen(context => context.Request.Path.StartsWithSegments("/send") && context.Request.Method == "POST", requestApp =>
-                {
-                    requestApp.Run(async context =>
-                    {
-                        if (!context.User.Identity.IsAuthenticated)
-                        {
-                            context.Response.StatusCode = 401;
-                            return;
-                        }
+                //axonApp.MapWhen(context => context.Request.Path.StartsWithSegments("/send") && context.Request.Method == "POST", requestApp =>
+                //{
+                //    requestApp.Run(async context =>
+                //    {
+                //        if (!context.User.Identity.IsAuthenticated)
+                //        {
+                //            context.Response.StatusCode = 401;
+                //            return;
+                //        }
 
-                        var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
+                //        var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
 
-                        byte[] requestData;
-                        using (var stream = memoryStreamManager.GetStream())
-                        {
-                            await context.Request.Body.CopyToAsync(stream);
-                            stream.Position = 0;
+                //        byte[] requestData;
+                //        using (var stream = memoryStreamManager.GetStream())
+                //        {
+                //            await context.Request.Body.CopyToAsync(stream);
+                //            stream.Position = 0;
 
-                            var buffer = stream.GetBuffer();
-                            requestData = Convert.FromBase64String(Encoding.UTF8.GetString(buffer[0..(int)stream.Length]));
-                        }
+                //            var buffer = stream.GetBuffer();
+                //            requestData = Convert.FromBase64String(Encoding.UTF8.GetString(buffer[0..(int)stream.Length]));
+                //        }
 
-                        TransportMessage message;
-                        using (var stream = memoryStreamManager.GetStream(requestData))
-                        using (var reader = new BinaryReader(stream))
-                        {
-                            message = reader.ReadTransportMessage();
-                        }
+                //        TransportMessage message;
+                //        using (var stream = memoryStreamManager.GetStream(requestData))
+                //        using (var reader = new BinaryReader(stream))
+                //        {
+                //            message = reader.ReadTransportMessage();
+                //        }
 
-                        if (context.Request.Query.TryGetValue("tag", out var tag))
-                            await client.Send(tag, message, cancellationSource.Token);
-                        else
-                            await client.Send(message, cancellationSource.Token);
-                    });
-                });
+                //        if (context.Request.Query.TryGetValue("tag", out var tag))
+                //            await client.Send(tag, message, cancellationSource.Token);
+                //        else
+                //            await client.Send(message, cancellationSource.Token);
+                //    });
+                //});
 
-                axonApp.MapWhen(context => context.Request.Path.StartsWithSegments("/receive") && context.Request.Method == "GET", requestApp =>
-                {
-                    requestApp.Run(async context =>
-                    {
-                        if (!context.User.Identity.IsAuthenticated)
-                        {
-                            context.Response.StatusCode = 401;
-                            return;
-                        }
+                //axonApp.MapWhen(context => context.Request.Path.StartsWithSegments("/receive") && context.Request.Method == "GET", requestApp =>
+                //{
+                //    requestApp.Run(async context =>
+                //    {
+                //        if (!context.User.Identity.IsAuthenticated)
+                //        {
+                //            context.Response.StatusCode = 401;
+                //            return;
+                //        }
 
-                        var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
+                //        var cancellationSource = new CancellationTokenSource(options.RequestTimeout);
 
-                        TransportMessage message;
-                        if (context.Request.Query.TryGetValue("tag", out var tag))
-                            message = await client.Receive(tag, cancellationSource.Token);
-                        else
-                            message = await client.Receive(cancellationSource.Token);
+                //        TransportMessage message;
+                //        if (context.Request.Query.TryGetValue("tag", out var tag))
+                //            message = await client.Receive(tag, cancellationSource.Token);
+                //        else
+                //            message = await client.Receive(cancellationSource.Token);
 
-                        using (var stream = memoryStreamManager.GetStream())
-                        using (var writer = new BinaryWriter(stream))
-                        {
-                            writer.WriteTransportMessage(message);
+                //        using (var stream = memoryStreamManager.GetStream())
+                //        using (var writer = new BinaryWriter(stream))
+                //        {
+                //            writer.WriteTransportMessage(message);
 
-                            var buffer = stream.GetBuffer();
-                            var responsePayload = Convert.FromBase64String(Convert.ToBase64String(buffer[0..(int)stream.Length]));
-                            context.Response.Body.Write(responsePayload, 0, responsePayload.Length);
-                        }
-                        //using (var writer = new BinaryWriter(context.Response.Body))
-                        //    writer.WriteTransportMessage(message);
-                    });
-                });
+                //            var buffer = stream.GetBuffer();
+                //            var responsePayload = Convert.FromBase64String(Convert.ToBase64String(buffer[0..(int)stream.Length]));
+                //            context.Response.Body.Write(responsePayload, 0, responsePayload.Length);
+                //        }
+                //        //using (var writer = new BinaryWriter(context.Response.Body))
+                //        //    writer.WriteTransportMessage(message);
+                //    });
+                //});
             });
 
             return app;
@@ -379,20 +396,26 @@ namespace Axon.Kestrel.Transport
         public override async Task Send(string messageId, TransportMessage message, CancellationToken cancellationToken)
         {
             var data = this.Protocol.Write(writer => writer.WriteTransportMessage(message));
+            
+            var binaryContent = new System.Net.Http.ByteArrayContent(data.ToArray());
+            binaryContent.Headers.Remove("Content-Type");
+            binaryContent.Headers.Add("Content-Type", "application/axon");
 
             var reqMessage = new HttpRequestMessage(HttpMethod.Post, $"axon/req?tag={messageId}")
             {
-                Content = new StringContent(Convert.ToBase64String(data.ToArray()), Encoding.UTF8, "text/plain"),
+                //Content = new StringContent(Convert.ToBase64String(data.ToArray()), Encoding.UTF8, "application/axon"),
+                Content = binaryContent,
                 Version = new Version(2, 0)
             };
 
             //await this.HttpClient.SendAsync(reqMessage, cancellationToken);
             this.PendingRequests.GetOrAdd(messageId, (_) => new BlockingCollection<Task<TransportMessage>>()).Add(this.HttpClient.SendAsync(reqMessage, cancellationToken).ContinueWith(async sendTask =>
             {
-                var rawResponse = await sendTask.Result.Content.ReadAsStringAsync();
-                var encodedResponse = Convert.FromBase64String(rawResponse);
+                sendTask.Result.EnsureSuccessStatusCode();
 
-                var message = this.Protocol.Read(encodedResponse, reader => reader.ReadTransportMessage());
+                var rawResponse = await sendTask.Result.Content.ReadAsByteArrayAsync();
+                Console.WriteLine("Server Response: " + rawResponse.Length);
+                var message = this.Protocol.Read(rawResponse, reader => reader.ReadTransportMessage());
 
                 return message;
 
@@ -441,6 +464,7 @@ namespace Axon.Kestrel.Transport
         public static void WriteTransportMessage(this IProtocolWriter writer, TransportMessage message)
         {
             writer.WriteIntegerValue(0);
+            writer.WriteStringValue(message.ProtocolIdentifier);
             writer.WriteIntegerValue(message.Metadata.Frames.Count);
 
             foreach (var frame in message.Metadata.Frames)
@@ -459,6 +483,8 @@ namespace Axon.Kestrel.Transport
             if (signal != 0)
                 throw new Exception("Message received with signal code " + signal.ToString());
 
+            var protocolIdentifier = reader.ReadStringValue();
+
             var frameCount = reader.ReadIntegerValue();
             for (var a = 0; a < frameCount; a++)
             {
@@ -470,12 +496,16 @@ namespace Axon.Kestrel.Transport
 
             var payloadData = reader.ReadData().ToArray();
 
-            return new TransportMessage(payloadData, metadata);
+            return new TransportMessage(payloadData, protocolIdentifier, metadata);
         }
 
         public static void WriteTransportMessage(this BinaryWriter writer, TransportMessage message)
         {
             writer.Write(BitConverter.GetBytes(0));
+
+            var encodedIdentifier = Encoding.UTF8.GetBytes(message.ProtocolIdentifier);
+            writer.Write(BitConverter.GetBytes(encodedIdentifier.Length));
+            writer.Write(encodedIdentifier);
 
             writer.Write(BitConverter.GetBytes(message.Metadata.Frames.Count));
 
@@ -500,6 +530,9 @@ namespace Axon.Kestrel.Transport
             if (signal != 0)
                 throw new Exception("Message received with signal code " + signal.ToString());
 
+            var protocolIdentifierLength = BitConverter.ToInt32(reader.ReadBytes(4), 0);
+            var protocolIdentifier = System.Text.Encoding.UTF8.GetString(reader.ReadBytes(protocolIdentifierLength));
+
             var frameCount = BitConverter.ToInt32(reader.ReadBytes(4), 0);
             for (var a = 0; a < frameCount; a++)
             {
@@ -515,7 +548,7 @@ namespace Axon.Kestrel.Transport
             var payloadLength = BitConverter.ToInt32(reader.ReadBytes(4), 0);
             var payload = reader.ReadBytes(payloadLength);
 
-            return new TransportMessage(payload, metadata);
+            return new TransportMessage(payload, protocolIdentifier, metadata);
         }
     }
 }

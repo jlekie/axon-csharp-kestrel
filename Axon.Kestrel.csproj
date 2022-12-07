@@ -4,7 +4,7 @@
     <Company>Axon</Company>
     <PackageId>JLekie.Axon.Kestrel</PackageId>
     <Authors>Joe Lekie</Authors>
-    <Version>1.0.0-alpha.4</Version>
+    <Version>1.0.0-alpha.5</Version>
     <Description>Axon - Kestrel Runtime</Description>
     <PackageTags>Axon RPC Kestrel</PackageTags>
     <RepositoryUrl>https://github.com/jlekie/axon-csharp-kestrel</RepositoryUrl>

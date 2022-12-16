@@ -1,6 +1,7 @@
 labels:
   app.cohesion.io/platform: dotnet
   app.cohesion.io/platform/language: csharp
+  app.cohesion.io/platform/pms: nuget
   app.cohesion.io/name: axon
 variables:
   CONFIGURATION: Debug

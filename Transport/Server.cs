@@ -230,11 +230,12 @@ namespace Axon.Kestrel.Transport
 
         private async void FrontendTransportMessageEnqueued(object sender, EventArgs e)
         {
-            var message = await this.Transport.Receive();
-            string serviceIdentifier = message.Metadata.TryGetLast("serviceIdentifier", out var encodedService) ? Encoding.UTF8.GetString(encodedService) : throw new Exception();
-
+            string serviceIdentifier = "unknown";
             try
             {
+                var message = await this.Transport.Receive();
+                serviceIdentifier = message.Metadata.TryGetLast("serviceIdentifier", out var encodedService) ? Encoding.UTF8.GetString(encodedService) : throw new Exception("Service identifier header not defined");
+
                 var cancellationSource = new CancellationTokenSource(5000);
                 var registeredBackend = this.ResolveBackend(serviceIdentifier, cancellationSource.Token);
 
@@ -243,6 +244,10 @@ namespace Axon.Kestrel.Transport
             catch (OperationCanceledException)
             {
                 this.OnDiagnosticMessage($"No backends available for {serviceIdentifier}!!!");
+            }
+            catch (Exception ex)
+            {
+                this.OnDiagnosticMessage(ex.Message);
             }
         }
         private async void BackendMessageReceived(object sender, MessagingEventArgs e)

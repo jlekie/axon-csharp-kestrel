@@ -22,7 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Condition="!('$(ForcePackageReferences)' != '' And $(ForcePackageReferences)) And Exists('$(AxonCommonSourcePath)\Axon.Common.csproj')" Include="$(AxonCommonSourcePath)\Axon.Common.csproj" />
-    <PackageReference Condition="('$(ForcePackageReferences)' != '' And $(ForcePackageReferences)) Or !Exists('$(AxonCommonSourcePath)\Axon.Common.csproj')" Include="JLekie.Axon.Common" Version="1.0.0-alpha.2" />
+    <PackageReference Condition="('$(ForcePackageReferences)' != '' And $(ForcePackageReferences)) Or !Exists('$(AxonCommonSourcePath)\Axon.Common.csproj')" Include="JLekie.Axon.Common" Version="1.2.0-alpha.0" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageReference Include="Microsoft.Extensions.Logging">
